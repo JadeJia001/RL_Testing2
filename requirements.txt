@@ -1,0 +1,26 @@
+# RL Testing - PETS + EBM danger_score experiment
+# Python 3.10 | CPU-only
+# Note: torch installed separately from CPU index (see post-create.sh)
+# Note: DI-engine installed separately with --no-deps (see post-create.sh)
+
+# --- Core RL environment ---
+gymnasium>=1.0.0,<2.0.0
+
+# --- Numeric / Scientific ---
+# numpy<2 required by DI-engine
+numpy>=1.26.0,<2.0.0
+scipy>=1.14.0,<2.0.0
+matplotlib>=3.9.0,<4.0.0
+pandas>=2.2.0,<3.0.0
+
+# --- Machine Learning ---
+scikit-learn>=1.5.0,<2.0.0
+
+# --- Interpretable ML ---
+# ExplainableBoostingClassifier for EBM(F1..F6)
+interpret>=0.6.0,<1.0.0
+# Certifiably Optimal Rule Lists (needs swig + libgmp at build time)
+corels>=1.1.0,<2.0.0
+
+# --- Utilities ---
+tqdm>=4.60.0,<5.0.0

@@ -1,0 +1,6 @@
+Rule,Condition,Prediction,Accuracy
+1,IF F5_rho_low AND F2_dV_low AND F1_adv_low,failure,93.3%
+2,IF F5_rho_low AND F2_dV_low AND NOT F1_adv_low,failure,84.7%
+3,IF F5_rho_low AND NOT F2_dV_low AND F6_SNR_low,failure,76.7%
+4,IF F5_rho_low AND NOT F2_dV_low AND NOT F6_SNR_low,failure,79.5%
+5,IF NOT F5_rho_low AND F2_dV_low AND F3_PE_high,failure,85.4%
