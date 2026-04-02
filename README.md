@@ -1,216 +1,216 @@
-# RL Testing: PETS + EBM Danger-Score Guided Search
+# RL Testing: PETS + EBM 危险分数引导搜索
 
-Can a learned **danger score** guide a search algorithm to find failure-inducing episodes faster than random testing?
+学习到的 **danger score（危险分数）** 能否引导搜索算法比随机测试更快地找到导致故障的 episode？
 
-This project implements a complete pipeline to answer this question using:
-- **PETS** (Probabilistic Ensemble Trajectory Sampling) as the RL agent under test
-- **EBM** (Explainable Boosting Machine) as the danger scorer
-- **STARLA-adapted genetic algorithm** as the guided search strategy
-- **CartPole-v1** as the test environment
+本项目实现了一个完整的实验流水线来回答这个问题，使用：
+- **PETS**（Probabilistic Ensemble Trajectory Sampling）作为被测试的 RL 智能体
+- **EBM**（Explainable Boosting Machine）作为危险评分器
+- **改编自 STARLA 的遗传算法**作为引导搜索策略
+- **CartPole-v1** 作为测试环境
 
-## Experimental Goal
+## 实验目标
 
-**Goal 1**: Prove that `danger_score = EBM(F1...F6)` can independently guide a genetic search to find failure-inducing episodes faster than random testing.
+**Goal 1**：证明 `danger_score = EBM(F1...F6)` 能够独立引导遗传搜索，比随机测试更快地找到导致故障的 episode。
 
-- Fitness: **only** `danger_score` -- no reward, no fault probability, no certainty
-- No perturbation channels (E1-E4)
-- Search framework: adapted from STARLA's multi-objective genetic algorithm
+- 适应度函数：**仅使用** `danger_score` -- 不使用奖励、故障概率或置信度
+- 不使用扰动通道（E1-E4）
+- 搜索框架：改编自 STARLA 的多目标遗传算法
 
-## Pipeline Overview
+## 流水线概览
 
 ```
-Phase 0: Seed Data
-  PETS Agent --> train on CartPole --> Trained Ensemble + Planner
+阶段 0：种子数据
+  PETS 智能体 --> 在 CartPole 上训练 --> 训练好的集成模型 + 规划器
 
-Phase 1: Feature + Scorer
-  Episodes --> extract F1-F6 --> Train EBM --> danger_score
-                               --> Train CORELS --> interpretable rules
+阶段 1：特征 + 评分器
+  Episodes --> 提取 F1-F6 --> 训练 EBM --> danger_score
+                             --> 训练 CORELS --> 可解释规则
 
-Phase 2: Guided Search (G1) vs Random Baseline (G0)
-  G1: GA evolves initial-state perturbations to maximize danger_score
-  G0: Random perturbations with same budget
+阶段 2：引导搜索 (G1) vs 随机基线 (G0)
+  G1：遗传算法进化初始状态扰动以最大化 danger_score
+  G0：相同预算下的随机扰动
 
-Phase 3: Evaluation
-  Compare G0 vs G1: fault rate, cumulative faults, efficiency curves
+阶段 3：评估
+  对比 G0 vs G1：故障率、累积故障数、效率曲线
 ```
 
-## Project Structure
+## 项目结构
 
 ```
 RL_Testing2/
 ├── experiments/
 │   ├── configs/
-│   │   └── pets_cartpole.py          # Hyperparameters (EasyDict)
+│   │   └── pets_cartpole.py          # 超参数配置 (EasyDict)
 │   ├── agents/
-│   │   ├── ensemble_model.py         # Probabilistic ensemble dynamics (5 members, 2x64)
-│   │   ├── cem_planner.py            # CEM planner (discrete Bernoulli, warm-start, TS-1)
-│   │   └── pets_agent.py             # PETS training loop + rollout
+│   │   ├── ensemble_model.py         # 概率集成动力学模型 (5 成员, 2x64)
+│   │   ├── cem_planner.py            # CEM 规划器 (离散 Bernoulli, 热启动, TS-1)
+│   │   └── pets_agent.py             # PETS 训练循环 + rollout
 │   ├── features/
-│   │   └── feature_extractor.py      # 6 danger-relevant features per timestep
+│   │   └── feature_extractor.py      # 每时间步 6 个危险相关特征
 │   ├── models/
-│   │   ├── train_ebm.py              # Train EBM classifier on features
-│   │   ├── train_corels.py           # Train CORELS rule list (interpretable)
-│   │   ├── danger_scorer.py          # Wrap EBM for GA fitness (logit transform)
-│   │   └── validate_consistency.py   # Cross-validate EBM vs CORELS agreement
+│   │   ├── train_ebm.py              # 训练 EBM 分类器
+│   │   ├── train_corels.py           # 训练 CORELS 规则列表（可解释性）
+│   │   ├── danger_scorer.py          # 封装 EBM 作为 GA 适应度（logit 变换）
+│   │   └── validate_consistency.py   # 交叉验证 EBM 与 CORELS 一致性
 │   ├── search/
-│   │   ├── genetic_search.py         # Single-objective GA (STARLA-adapted)
-│   │   └── random_baseline.py        # G0 random search baseline
+│   │   ├── genetic_search.py         # 单目标遗传算法（改编自 STARLA）
+│   │   └── random_baseline.py        # G0 随机搜索基线
 │   ├── evaluation/
-│   │   ├── run_goal1.py              # G0 vs G1 multi-trial experiment
-│   │   ├── plot_efficiency.py        # Generate efficiency curves (Figure 1)
-│   │   └── generate_table1.py        # Generate CORELS rules (Table 1)
+│   │   ├── run_goal1.py              # G0 vs G1 多次重复实验
+│   │   ├── plot_efficiency.py        # 生成效率曲线（Figure 1）
+│   │   └── generate_table1.py        # 生成 CORELS 规则（Table 1）
 │   ├── utils/
-│   │   ├── episode.py                # Episode dataclass + ReplayBuffer
-│   │   └── env_wrapper.py            # CartPole state save/restore
-│   ├── train_pets.py                 # Script: train PETS agent
-│   ├── collect_episodes.py           # Script: collect 600+ episodes
-│   ├── extract_features.py           # Script: extract feature matrix
-│   ├── data/                         # Runtime artifacts (checkpoints, episodes, features, results)
-│   ├── outputs/                      # Figures and tables
-│   └── ARCHITECTURE.md               # Detailed design document
-├── DI-engine/                        # OpenDILab DI-engine (submodule, --no-deps)
-├── STARLA/                           # STARLA reference implementation (submodule)
-├── .devcontainer/                    # Dev container for reproducible environment
-└── requirements.txt                  # Python dependencies
+│   │   ├── episode.py                # Episode 数据结构 + ReplayBuffer
+│   │   └── env_wrapper.py            # CartPole 状态保存/恢复
+│   ├── train_pets.py                 # 脚本：训练 PETS 智能体
+│   ├── collect_episodes.py           # 脚本：采集 600+ episodes
+│   ├── extract_features.py           # 脚本：提取特征矩阵
+│   ├── data/                         # 运行时产物（检查点、episodes、特征、结果）
+│   ├── outputs/                      # 图表输出
+│   └── ARCHITECTURE.md               # 详细架构设计文档
+├── DI-engine/                        # OpenDILab DI-engine（子目录，--no-deps 安装）
+├── STARLA/                           # STARLA 参考实现（子目录）
+├── .devcontainer/                    # 开发容器，用于可复现的环境
+└── requirements.txt                  # Python 依赖
 ```
 
-## Features (F1-F6)
+## 特征定义 (F1-F6)
 
-Six per-timestep features capture different aspects of danger:
+六个逐时间步特征，捕捉危险的不同方面：
 
-| ID | Name | Description | Intuition |
-|----|------|-------------|-----------|
-| F1 | Advantage | Q(s,a) - V(s) | Policy quality: negative = suboptimal action taken |
-| F2 | dV | (V_t - V_{t-k}) / k | Value trend: negative = situation deteriorating |
-| F3 | Prediction Error | \|\|predicted - actual\|\| | Model reliability: high = poorly modeled region |
-| F4 | Uncertainty Accel | d^2U/dt^2 | Worsening speed: positive = uncertainty accelerating |
-| F5 | Density | Mean 5-NN distance | Distribution shift: high = far from training data |
-| F6 | SNR | \|V\| / (U + eps) | Decision confidence: low = noisy decisions |
+| ID | 名称 | 计算方式 | 含义 |
+|----|------|----------|------|
+| F1 | Advantage（优势） | Q(s,a) - V(s) | 策略质量：负值 = 采取了次优动作 |
+| F2 | dV（价值变化率） | (V_t - V_{t-k}) / k | 价值趋势：负值 = 局势正在恶化 |
+| F3 | Prediction Error（预测误差） | \|\|predicted - actual\|\| | 模型可靠性：高 = 模型建模不佳的区域 |
+| F4 | Uncertainty Accel（不确定性加速度） | d^2U/dt^2 | 恶化速度：正值 = 不确定性在加速增长 |
+| F5 | Density（密度） | 平均 5-NN 距离 | 分布偏移：高 = 远离训练数据分布 |
+| F6 | SNR（信噪比） | \|V\| / (U + eps) | 决策置信度：低 = 决策噪声大 |
 
-## Current Results
+## 当前实验结果
 
-### Phase 1: PETS Agent
+### 阶段 1：PETS 智能体训练
 
-PETS solves CartPole-v1 (avg reward >= 195) within ~35 iterations using:
-- 5-member probabilistic ensemble, 2x64 hidden layers, Swish activation
-- Random shooting planner (CEM with 1 iteration, 500 candidates, horizon 10)
-- Gaussian NLL loss with logvar clamping, holdout-based early stopping
+PETS 在约 35 轮迭代内解决 CartPole-v1（平均奖励 >= 195），配置如下：
+- 5 成员概率集成模型，2x64 隐藏层，Swish 激活函数
+- 随机射击规划器（CEM 仅 1 次迭代，500 个候选序列，规划 horizon 为 10）
+- 高斯 NLL 损失 + logvar 截断，基于 holdout 的早停机制
 
-![PETS Training Curve](experiments/outputs/pets_training_curve.png)
+![PETS 训练曲线](experiments/outputs/pets_training_curve.png)
 
-### Phase 2: Episode Collection
+### 阶段 2：Episode 采集
 
-600 episodes collected with 20% random-action perturbation:
-- Lightweight planner (100 candidates, horizon 8) for speed
-- Additional episodes collected to ensure >= 50 failures
-- Reference training states saved for F5 density computation
+采集 600 个 episodes，其中 20% 的时间步使用随机动作扰动：
+- 使用轻量规划器（100 个候选序列，horizon 为 8）加速采集
+- 额外补充采集以确保故障 episode 数量 >= 50
+- 保存训练参考状态用于 F5 密度计算
 
-### Phase 3: EBM Danger Scorer
+### 阶段 3：EBM 危险评分器
 
-EBM trained on 6 features with episode-level train/test split (no data leakage):
+EBM 在 6 个特征上训练，使用 episode 级别的训练/测试划分（无数据泄漏）：
 
-**EBM Shape Functions** -- each feature's contribution to danger_score:
+**EBM 形状函数** -- 每个特征对 danger_score 的贡献：
 
-![EBM Shape Functions](experiments/outputs/ebm_shape_functions.png)
+![EBM 形状函数](experiments/outputs/ebm_shape_functions.png)
 
-Key findings from the shape functions:
-- **F1 (Advantage)**: strong negative correlation -- lower advantage = higher danger
-- **F2 (dV)**: strong negative correlation -- declining value = higher danger
-- **F3 (Prediction Error)**: positive correlation -- high PE = higher danger
-- **F5 (Density)**: lower density (closer to training data) shows higher danger contribution, likely reflecting that the agent's failure modes cluster near the training distribution boundary
-- **F6 (SNR)**: low SNR = higher danger, with a sharp transition
+形状函数的关键发现：
+- **F1（Advantage）**：强负相关 -- 优势值越低，危险越高
+- **F2（dV）**：强负相关 -- 价值下降越快，危险越高
+- **F3（Prediction Error）**：正相关 -- 预测误差越大，危险越高
+- **F5（Density）**：密度较低（更接近训练数据）反而显示更高的危险贡献，可能反映了智能体的故障模式集中在训练分布边界附近
+- **F6（SNR）**：低信噪比 = 更高危险，存在一个明显的阶跃转变
 
-### Phase 4: CORELS Interpretable Rules
+### 阶段 4：CORELS 可解释规则
 
-CORELS extracts human-readable if-then rules explaining danger boundaries:
+CORELS 提取了人类可读的 if-then 规则来解释危险边界：
 
-| Rule | Condition | Prediction | Accuracy |
-|------|-----------|------------|----------|
-| 1 | IF F5_rho_low AND F2_dV_low AND F1_adv_low | failure | 93.3% |
-| 2 | IF F5_rho_low AND F2_dV_low AND NOT F1_adv_low | failure | 84.7% |
-| 3 | IF F5_rho_low AND NOT F2_dV_low AND F6_SNR_low | failure | 76.7% |
-| 4 | IF F5_rho_low AND NOT F2_dV_low AND NOT F6_SNR_low | failure | 79.5% |
-| 5 | IF NOT F5_rho_low AND F2_dV_low AND F3_PE_high | failure | 85.4% |
+| 规则 | 条件 | 预测 | 准确率 |
+|------|------|------|--------|
+| 1 | IF F5_rho_low AND F2_dV_low AND F1_adv_low | 故障 | 93.3% |
+| 2 | IF F5_rho_low AND F2_dV_low AND NOT F1_adv_low | 故障 | 84.7% |
+| 3 | IF F5_rho_low AND NOT F2_dV_low AND F6_SNR_low | 故障 | 76.7% |
+| 4 | IF F5_rho_low AND NOT F2_dV_low AND NOT F6_SNR_low | 故障 | 79.5% |
+| 5 | IF NOT F5_rho_low AND F2_dV_low AND F3_PE_high | 故障 | 85.4% |
 
-The dominant pattern: **low density (F5) combined with declining value (F2)** is the strongest predictor of failure.
+主导模式：**低密度（F5）结合价值下降（F2）** 是最强的故障预测组合。
 
-### Phase 5: G0 vs G1 Search Comparison
+### 阶段 5：G0 vs G1 搜索对比
 
-Experiment setup:
-- Population size: 20, Generations: 20, Budget: 420 episodes per trial
-- 5 repeated trials for statistical comparison
-- Perturbation sigma: 0.05 (same for G0 and G1)
-- Both use CEM planner with NO action noise -- only initial-state perturbation differs
+实验设置：
+- 种群大小：20，代数：20，预算：每次试验 420 个 episodes
+- 5 次重复试验用于统计比较
+- 扰动 sigma：0.05（G0 和 G1 相同）
+- 两者均使用 CEM 规划器且无动作噪声 -- 唯一变量是初始状态扰动方式
 
-The GA (G1) evolves initial-state perturbations to maximize danger_score (logit-transformed EBM output), while G0 uses random perturbations with the same budget.
+遗传算法（G1）进化初始状态扰动以最大化 danger_score（logit 变换后的 EBM 输出），而 G0 在相同预算下使用随机扰动。
 
-## Adaptations from STARLA
+## 相对于 STARLA 的改编
 
-| Aspect | STARLA Original | Our Adaptation |
-|--------|----------------|----------------|
-| Agent | Pre-trained DQN (Stable-Baselines) | PETS (ensemble + CEM planner) |
-| Fitness | 3 objectives (reward, confidence, fault prob) | 1 objective: danger_score |
-| Selection | NSGA-II preference sort | Single-objective tournament |
-| Crossover | Abstract-state matching (Q-value bins) | Uniform crossover on state perturbations |
-| Mutation | Cart position only (dim 0) | Any state dimension |
-| Re-execution | DQN predict | CEM plan |
-| Archive | Objective threshold | Early termination = fault |
+| 方面 | STARLA 原版 | 本项目改编 |
+|------|------------|-----------|
+| 智能体 | 预训练 DQN (Stable-Baselines) | PETS（集成模型 + CEM 规划器） |
+| 适应度 | 3 个目标（奖励、置信度、故障概率） | 单一目标：danger_score |
+| 选择策略 | NSGA-II 偏好排序 | 单目标锦标赛选择 |
+| 交叉操作 | 抽象状态匹配（Q 值分箱） | 状态扰动向量的均匀交叉 |
+| 变异操作 | 仅扰动小车位置（维度 0） | 扰动任意状态维度 |
+| 重新执行 | DQN predict | CEM plan |
+| 存档条件 | 目标阈值 | 提前终止 = 故障 |
 
-## Dependencies
+## 依赖
 
-| Component | Purpose |
-|-----------|---------|
-| PyTorch (CPU) | Ensemble dynamics model |
-| gymnasium | CartPole-v1 environment |
-| interpret (EBM) | Explainable Boosting Classifier |
-| corels | Certifiably Optimal Rule Lists |
-| DI-engine (--no-deps) | Reference patterns for ensemble training |
-| scikit-learn | NearestNeighbors (F5), DecisionTree fallback |
-| numpy, scipy, matplotlib, pandas | Numerics and plotting |
+| 组件 | 用途 |
+|------|------|
+| PyTorch (CPU) | 集成动力学模型 |
+| gymnasium | CartPole-v1 环境 |
+| interpret (EBM) | 可解释提升分类器 |
+| corels | 可证明最优规则列表 |
+| DI-engine (--no-deps) | 集成模型训练的参考模式 |
+| scikit-learn | NearestNeighbors (F5)、DecisionTree 备选 |
+| numpy, scipy, matplotlib, pandas | 数值计算与绘图 |
 
-## Getting Started
+## 快速开始
 
-### Using Dev Container (recommended)
+### 使用开发容器（推荐）
 
 ```bash
-# Open in VS Code with Dev Containers extension, or:
+# 在 VS Code 中使用 Dev Containers 扩展打开项目，或者手动构建：
 cd .devcontainer && docker build -t rl-testing ..
 docker run -it -v $(pwd)/..:/workspace rl-testing bash
 bash .devcontainer/post-create.sh
 ```
 
-### Running the Pipeline
+### 运行实验流水线
 
-All scripts should be run from the project root:
+所有脚本应从项目根目录运行：
 
 ```bash
-# Phase 1: Train PETS agent (~35 min on CPU)
+# 阶段 1：训练 PETS 智能体（CPU 上约 35 分钟）
 python -m experiments.train_pets
 
-# Phase 2: Collect episodes (~5 min)
+# 阶段 2：采集 episodes（约 5 分钟）
 python -m experiments.collect_episodes
 
-# Phase 3: Extract features (~10 min)
+# 阶段 3：提取特征（约 10 分钟）
 python -m experiments.extract_features
 
-# Phase 4a: Train EBM
+# 阶段 4a：训练 EBM
 python -m experiments.models.train_ebm
 
-# Phase 4b: Train CORELS
+# 阶段 4b：训练 CORELS
 python -m experiments.models.train_corels
 
-# Phase 4c: Validate EBM/CORELS consistency
+# 阶段 4c：验证 EBM/CORELS 一致性
 python -m experiments.models.validate_consistency
 
-# Phase 5: Run G0 vs G1 experiment
+# 阶段 5：运行 G0 vs G1 实验
 python -m experiments.evaluation.run_goal1
 
-# Generate outputs
+# 生成输出图表
 python -m experiments.evaluation.plot_efficiency
 python -m experiments.evaluation.generate_table1
 ```
 
-## References
+## 参考文献
 
 - **PETS**: Chua, K., et al. "Deep Reinforcement Learning in a Handful of Trials using Probabilistic Dynamics Models." NeurIPS 2018.
 - **STARLA**: Attaoui, M.O., et al. "Black-box Safety Testing of Reinforcement Learning Agents." 2024.
